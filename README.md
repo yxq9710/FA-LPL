@@ -1,5 +1,7 @@
 ### FA-LPL
-the official achievement of we proposed FA-LPL. 基于特征注意力和标签概率学习的文本分类模型
+- the official achievement of we proposed FA-LPL. 基于特征注意力和标签概率学习的文本分类模型
+
+the code is based on [LCM](https://github.com/beyondguo/label_confusion_learning).
 
 ### Pre-trained Weights
 - 中文： [baike_26g_news_13g_novel_229g.bin](https://pan.baidu.com/s/1ckkH_eT-WS4SN73Iq9Q_5A)(密码：9aza), 相关加载方式及链接来源在[此](https://blog.csdn.net/znsoft/article/details/107140452).
