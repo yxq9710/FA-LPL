@@ -293,16 +293,11 @@ class CNN_two_loss:
         output_2 = Dense(hidden_size * 4)(label_emb_d)
         output1 = Lambda(lambda x: x[0] + x[1])([output_1, output_2])
         output1 = Lambda(lambda x: K.tanh(x))(output1)
-        # weight = Dense(1, activation='softmax')(output1)
-
-        # weight_d = Dense(hidden_size*4)(label_emb_d)
-        # weight_d = Softmax()(weight_d)
 
         weight_1 = Dense(hidden_size * 4)(label_emb_d)
         weight_2 = Dense(hidden_size * 4)(output1)
         weight_d = Lambda(lambda x: K.tanh(x[0] + x[1]))([weight_1, weight_2])
 
-        # weight_d = Softmax()(output1)
         weight = Lambda(lambda x:K.sum(x[0] * x[1], axis=-1, keepdims=True))([weight_d, output1])
         doc_product = Lambda(lambda x: K.squeeze(x, axis=-1))(weight)
         weight = Lambda(lambda x: K.softmax(x))(weight)
@@ -316,13 +311,9 @@ class CNN_two_loss:
         else: # 'categorical_crossentropy'  # 'adam'
             self.basic_predictor.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True), optimizer='adam')
 
-        # doc_product_l = Lambda(lambda x: tf.transpose(x, perm=[0, 2, 1, 3]))(weight)
-        # label_emb_l = Lambda(lambda x: K.expand_dims(x, axis=1))(label_emb)
-        # label_vec = Lambda(lambda x: K.sum(x[0] * x[1], axis=2))([doc_product_l, label_emb_l])
         label_sim_dict = Dense(1)(doc_product)
         label_sim_dict = Lambda(lambda x: K.squeeze(x, axis=-1))(label_sim_dict)
         label_sim_dict = Dense(num_classes, activation='softmax', name='label_sim_dict')(label_sim_dict)
-        # label_sim_dict = Softmax(name='label_sim_dict')(label_sim_dict)
         concat_output = Concatenate()([pred_probs, label_sim_dict])
         self.model = Model(inputs=[text_input, label_input], outputs=concat_output)
         self.model.compile(loss=lcm_loss, optimizer='adam')
@@ -398,7 +389,6 @@ class CNN_two_loss_no_attention:
             pred_probs = y_pred[:, :num_classes]
             label_sim_dist = y_pred[:, num_classes:]
 
-            # simulated_y_true = K.softmax(label_sim_dist + alpha * y_true)
             simulated_y_true = K.softmax((label_sim_dist + 4 * y_true) / alpha)
             pred_probs = K.softmax(pred_probs / alpha)
 

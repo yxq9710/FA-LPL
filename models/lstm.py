@@ -11,8 +11,6 @@ from keras.utils import to_categorical
 from gensim.models import Word2Vec
 from sklearn.metrics import accuracy_score,precision_score,recall_score,f1_score
 from bert4keras.optimizers import Adam, extend_with_piecewise_linear_lr
-# from keras.experimental import LinearCosineDecay
-# lr_decayed_fn = (tf.keras.experimental.LinearCosineDecay(initial_learning_rate=0.01, decay_steps=1000))
 
 AdamLR = extend_with_piecewise_linear_lr(Adam, name='AdamLR')
 
@@ -316,13 +314,6 @@ class LSTM_LCM_word_level:
             self.basic_predictor.compile(loss='categorical_crossentropy', optimizer='adam')
         self.basic_predictor.summary()
 
-        # LCM:
-        # label_input = Input(shape=(num_classes,), name='label_input')
-        # label_emb = Embedding(num_classes, wvdim, input_length=num_classes, name='label_emb1')(label_input)  # (n,wvdim)
-        # label_emb = Dense(hidden_size, activation='tanh', name='label_emb2')(label_emb)
-        # similarity part:
-        # doc_product = Dot(axes=(2, 1))([label_emb, input_vec])  # (n,d) dot (d,1) --> (n,1)
-        # label_sim_dict = Dense(num_classes, activation='softmax', name='label_sim_dict')(doc_product)  # 没有加one hot？
         doc_product = Lambda(lambda x: tf.transpose(x, perm=[0, 2, 1]))(doc_product)
         label_sim_dict = Dense(1)(doc_product)
         label_sim_dict = Lambda(lambda x: K.reshape(x, shape=(-1, num_classes)))(label_sim_dict)
@@ -399,11 +390,6 @@ class LSTM_LCM_word_level:
 
 
 class LSTM_two_loss:
-    """
-    LCM dynamic,跟LCM的主要差别在于：
-    1.可以设置early stop，即设置在某一个epoch就停止LCM的作用；
-    2.在停止使用LCM之后，可以选择是否使用label smoothing来计算loss。
-    """
 
     def __init__(self, maxlen, vocab_size, wvdim, hidden_size, num_classes, alpha, default_loss='ls',
                  text_embedding_matrix=None, label_embedding_matrix=None):
@@ -457,7 +443,6 @@ class LSTM_two_loss:
         label_emb = Embedding(num_classes, wvdim, input_length=num_classes, name='label_emb1')(label_input)  # (n,wvdim)
         label_emb = Dense(hidden_size, activation='tanh', name='label_emb2')(label_emb)
 
-        # input_vec = LSTM(hidden_size)(input_emb)
         input_vec = LSTM(hidden_size, return_sequences=True)(input_emb)
         input_vec = Dropout(0.4)(input_vec)
 
@@ -467,20 +452,16 @@ class LSTM_two_loss:
         output_2 = Dense(hidden_size * 4)(label_emb_d)
         output1 = Lambda(lambda x: x[0] + x[1])([output_1, output_2])
         output1 = Lambda(lambda x: K.tanh(x))(output1)
-        # weight = Dense(1, activation='softmax')(output1)
 
         # # 引入dimensional 维度的attention
         weight_d = Softmax()(output1)
         weight = Lambda(lambda x: K.sum(x[0] * x[1], axis=-1, keepdims=True))([weight_d, output1])
 
-        # doc_product_d = weight
         doc_product = Lambda(lambda x: K.squeeze(x, axis=-1))(weight)
         weight = Lambda(lambda x: K.softmax(x))(weight)   # 对注意力使用softmax
         input_vec = Lambda(lambda x: K.sum(x[0] * x[1], axis=1))([weight, text_emb_d])
 
         input_vec_1 = GlobalAveragePooling1D()(input_vec)
-        # pred_probs = input_vec_1
-        # pred_probs = Softmax()(input_vec_1)
         pred_probs = Dense(num_classes, name='pred_probs')(input_vec_1)
 
         # pred_probs = Dense(num_classes, activation='softmax', name='pred_probs')(input_vec_1)
@@ -489,15 +470,7 @@ class LSTM_two_loss:
             self.basic_predictor.compile(loss=ls_loss, optimizer='adam')
         else: # tf.keras.losses.CategoricalCrossentropy(from_logits=True)   'categorical_crossentropy'
             self.basic_predictor.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True), optimizer='adam')
-        # self.basic_predictor.summary()
 
-        # LCM:
-        # doc_product_l = Lambda(lambda x: tf.transpose(x, perm=[0, 2, 1, 3]))(weight)
-        # label_emb_l = Lambda(lambda x: K.expand_dims(x, axis=1))(label_emb)
-        # label_vec = Lambda(lambda x: K.sum(x[0] * x[1], axis=2))([doc_product_l, label_emb_l])
-
-        # doc_product = Lambda(lambda x: tf.transpose(x, perm=[0, 2, 1]))(doc_product)
-        # label_sim_dict = GlobalAveragePooling1D()(label_vec)
         label_sim_dict = Dense(1)(doc_product)
         label_sim_dict = Lambda(lambda x: K.squeeze(x, axis=-1))(label_sim_dict)
         label_sim_dict = Dense(num_classes, activation='softmax', name='label_sim_dict')(label_sim_dict)
@@ -615,16 +588,12 @@ class LSTM_two_loss_no_attention:
         weight_d = Dense(hidden_size * 4)(label_emb_d)
         weight_d = Softmax()(weight_d)
         # # 引入dimensional 维度的attention
-        # weight_d = Softmax()(output1)
         weight = Lambda(lambda x: K.sum(x[0] * x[1], axis=-1, keepdims=True))([weight_d, output1])
         doc_product = Lambda(lambda x: K.squeeze(x, axis=-1))(weight)
 
         input_vec_1 = GlobalAveragePooling1D()(input_vec)
-        # pred_probs = input_vec_1
-        # pred_probs = Softmax()(input_vec_1)
         pred_probs = Dense(num_classes, name='pred_probs')(input_vec_1)
 
-        # pred_probs = Dense(num_classes, activation='softmax', name='pred_probs')(input_vec_1)
         self.basic_predictor = Model(inputs=[text_input, label_input], outputs=pred_probs)
         if default_loss == 'ls':
             self.basic_predictor.compile(loss=ls_loss, optimizer='adam')
@@ -706,11 +675,6 @@ class LSTM_two_loss_no_attention:
 
 
 class LSTM_LCM_loss1:
-    """
-    LCM dynamic,跟LCM的主要差别在于：
-    1.可以设置early stop，即设置在某一个epoch就停止LCM的作用；
-    2.在停止使用LCM之后，可以选择是否使用label smoothing来计算loss。
-    """
 
     def __init__(self, maxlen, vocab_size, wvdim, hidden_size, num_classes, alpha, default_loss='ls',
                  text_embedding_matrix=None, label_embedding_matrix=None):
@@ -772,7 +736,6 @@ class LSTM_LCM_loss1:
         output1 = Lambda(lambda x: x[0] + x[1])([output_1, output_2])
         output1 = Lambda(lambda x: K.tanh(x))(output1)
 
-        # weight = Dense(1, activation='softmax')(output1)
         # 引入dimensional 维度的attention
         weight_d = Softmax()(output1)
         weight = Lambda(lambda x: K.sum(x[0] * x[1], axis=-1, keepdims=True))([weight_d, output1])
@@ -782,21 +745,6 @@ class LSTM_LCM_loss1:
         input_vec = Lambda(lambda x: K.sum(x[0] * x[1], axis=1))([weight, text_emb_d])
 
         input_vec_1 = GlobalAveragePooling1D()(input_vec)
-        # kernel_sizes = [3, 4, 5]
-        # num_filters = 100
-        # out_pool = []
-        # for kernel_size in kernel_sizes:
-        #     conv1 = Conv1D(num_filters, kernel_size, padding='same', activation='relu')(input_vec)
-        #     pool1 = GlobalAveragePooling1D()(conv1)
-        #     # pool1 = MaxPooling1D(maxlen)(conv1)
-        #     out_pool.append(pool1)
-        # # input_vec = GlobalAveragePooling1D()(input_vec)
-        # out_pool.append(input_vec)
-        # pooled = Concatenate(axis=-1)(out_pool)
-        # pooled = Dense(num_classes)(pooled)
-        # input_vec_1 = pooled
-        # pred_probs = input_vec_1
-        # pred_probs = Softmax()(input_vec_1)
         pred_probs = Dense(num_classes, name='pred_probs')(input_vec_1)
 
         # pred_probs = Dense(num_classes, activation='softmax', name='pred_probs')(input_vec_1)
@@ -806,11 +754,7 @@ class LSTM_LCM_loss1:
         else:  # tf.keras.losses.CategoricalCrossentropy(from_logits=True)   'categorical_crossentropy'
             self.basic_predictor.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True),
                                              optimizer='adam')
-        # self.basic_predictor.summary()
 
-        # doc_product_l = Lambda(lambda x: tf.transpose(x, perm=[0, 2, 1, 3]))(weight)
-        # label_emb_l = Lambda(lambda x: K.expand_dims(x, axis=1))(label_emb)
-        # label_vec = Lambda(lambda x: K.sum(x[0] * x[1], axis=2))([doc_product_l, label_emb_l])
         label_sim_dict = Dense(1)(doc_product)
         label_sim_dict = Lambda(lambda x: K.squeeze(x, axis=-1))(label_sim_dict)
         # label_sim_dict = Softmax(name='label_sim_dict')(label_sim_dict)
@@ -842,27 +786,6 @@ class LSTM_LCM_loss1:
         final_train_score = 0
         val_score_list = []
         for i in range(epochs):
-            # if i < lcm_stop // 2:
-            #     t1 = time.time()
-            #     self.second_model.fit([X_train, L_train], to_categorical(y_train), batch_size=batch_size, verbose=0, epochs=1)
-            #     val_score = self.my_evaluator(self.second_model, [X_val, L_val], y_val)
-            #     t2 = time.time()
-            #     print('(LCM second loss1)Epoch', i + 1, '| time: %.3f s' % (t2 - t1), '| current val accuracy:', val_score)
-            #     if val_score > best_val_score:
-            #         best_val_score = val_score
-            #         # test:
-            #         current_test_score = self.my_evaluator(self.second_model, [X_test, L_test], y_test)
-            #         if current_test_score > final_test_score:
-            #             final_test_score = current_test_score
-            #             print('  Current Best model! Test score:', final_test_score)
-            #             # train:
-            #             final_train_score = self.my_evaluator(self.second_model, [X_train, L_train], y_train)
-            #             print('  Current Best model! Train score:', final_train_score)
-            #             if save_best:
-            #                 self.second_model.save('best_second_model.h5')
-            #                 print('best model saved!')
-            #     val_score_list.append(val_score)
-            # elif i < lcm_stop:
             if i < lcm_stop:
                 t1 = time.time()
                 self.model.fit([X_train, L_train], to_categorical(y_train), batch_size=batch_size, verbose=0, epochs=1)
